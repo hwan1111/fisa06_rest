@@ -92,7 +92,7 @@ with tab_map:
                     st.caption(f"📍 {row['address']}")
                     
                     with st.expander("💬 리뷰 및 대댓글 보기"):
-                        render_comments(row['id'])
+                        render_comments(row['id'], rev_df)
                     
                     if row['url']:
                         st.link_button("네이버 지도", row['url'], use_container_width=True)
