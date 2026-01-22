@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from streamlit_gsheets import GSheetsConnection
 
+
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 def load_gsheet_data(worksheet_name):
@@ -23,3 +24,4 @@ def load_gsheet_data(worksheet_name):
 def save_gsheet_data(df, worksheet_name):
     conn.update(worksheet=worksheet_name, data=df)
     st.cache_data.clear()
+
