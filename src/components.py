@@ -3,8 +3,8 @@ import uuid
 import time
 from datetime import datetime
 import pandas as pd
-from src.data_handler import load_gsheet_data, save_gsheet_data
-from src.utils import get_star_rating
+from data_handler import load_gsheet_data, save_gsheet_data
+from utils import get_star_rating
 
 def add_review(rest_id, comment, rating, user, parent_id="root"):
     current_rev_df = load_gsheet_data("reviews")
