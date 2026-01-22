@@ -4,6 +4,10 @@ from streamlit_folium import st_folium
 import plotly.express as px
 import pandas as pd
 import uuid
+import pymysql
+import os
+from dotenv import load_dotenv
+
 
 # 모듈 불러오기
 from data_handler import load_gsheet_data, save_gsheet_data

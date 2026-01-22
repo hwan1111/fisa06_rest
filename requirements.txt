@@ -5,3 +5,5 @@ streamlit-folium
 st-gsheets-connection
 geopy
 plotly
+pymysql
+python-dotenv
