@@ -3,6 +3,7 @@ import streamlit as st
 import pandas as pd
 from streamlit_gsheets import GSheetsConnection
 import pymysql
+from login import execute_query, fetch_query
 import uuid
 from datetime import datetime
 
@@ -244,3 +245,142 @@ def get_reviews_by_restaurant(restaurant_id):
     if not df.empty:
         df['rating'] = pd.to_numeric(df['rating'], errors='coerce')
     return df
+
+# =============================================================================
+# Party (맛집 원정대) Functions
+# =============================================================================
+
+def create_party(restaurant_id, host_id, max_people, is_anonymous):
+    """새로운 파티를 생성하고 방장을 참여자로 등록합니다."""
+    party_id = str(uuid.uuid4())[:8]
+    
+    # 1. 파티 생성 (Placeholder를 %s로 변경, 파라미터는 튜플로 전달)
+    query_party = """
+        INSERT INTO parties (id, restaurant_id, host_id, max_people, is_anonymous, created_at, status)
+        VALUES (%s, %s, %s, %s, %s, %s, 'OPEN')
+    """
+    params_party = (party_id, restaurant_id, host_id, max_people, is_anonymous, datetime.now())
+    
+    execute_query(query_party, params_party)
+    
+    # 2. 방장을 참여자로 자동 등록 (내부 함수 호출 시 DB 에러 방지를 위해 직접 쿼리 실행)
+    try:
+        query_host = "INSERT INTO party_participants (party_id, user_id, joined_at) VALUES (%s, %s, %s)"
+        execute_query(query_host, (party_id, host_id, datetime.now()))
+    except Exception as e:
+        print(f"Host Join Error: {e}")
+        
+    return party_id
+
+def join_party(party_id, user_id):
+    """
+    파티 참여 로직 (인원수 체크 포함)
+    Returns:
+        (bool, str): (성공여부, 메시지)
+    """
+    # 1. 인원 체크 (%s 사용)
+    check_query = """
+        SELECT p.max_people, COUNT(pp.user_id) as current_people
+        FROM parties p
+        LEFT JOIN party_participants pp ON p.id = pp.party_id
+        WHERE p.id = %s
+        GROUP BY p.id
+    """
+    rows = fetch_query(check_query, (party_id,))
+    
+    if not rows:
+        return False, "존재하지 않는 파티입니다."
+    
+    # fetch_query 결과는 ((max, curr), ) 형태의 튜플의 튜플입니다.
+    # 인덱스로 접근해야 합니다.
+    max_p = rows[0][0]
+    curr_p = rows[0][1]
+    
+    if curr_p >= max_p:
+        return False, "앗! 그 사이에 자리가 꽉 찼습니다. 😭"
+    
+    # 2. 중복 참여 체크
+    check_user_query = "SELECT * FROM party_participants WHERE party_id=%s AND user_id=%s"
+    check_user = fetch_query(check_user_query, (party_id, user_id))
+    
+    if check_user:
+        return False, "이미 참여 중인 파티입니다."
+
+    # 3. 입장 처리
+    try:
+        insert_query = "INSERT INTO party_participants (party_id, user_id, joined_at) VALUES (%s, %s, %s)"
+        execute_query(insert_query, (party_id, user_id, datetime.now()))
+        return True, "파티 참여 성공! 🎉"
+    except Exception as e:
+        return False, f"오류가 발생했습니다: {str(e)}"
+
+def leave_party(party_id, user_id):
+    """파티 나가기"""
+    query = "DELETE FROM party_participants WHERE party_id = %s AND user_id = %s"
+    execute_query(query, (party_id, user_id))
+
+def get_active_parties():
+    """
+    모집 중인 파티 목록을 가져옵니다.
+    (수정됨: DataFrame 처리 방식 변경)
+    """
+    query = """
+        SELECT 
+            p.id, 
+            p.restaurant_id, 
+            r.name as restaurant_name,
+            p.host_id,
+            u.name as host_name,
+            p.max_people,
+            p.is_anonymous,
+            p.created_at,
+            COUNT(pp.user_id) as current_people
+        FROM parties p
+        JOIN restaurants r ON p.restaurant_id = r.id
+        JOIN users u ON p.host_id = u.id
+        LEFT JOIN party_participants pp ON p.id = pp.party_id
+        WHERE p.status = 'OPEN' AND DATE(p.created_at) = CURDATE()
+        GROUP BY p.id
+        ORDER BY p.created_at DESC
+    """
+    df = fetch_query(query)
+    
+    # fetch_query가 이미 DataFrame을 반환하므로 .empty로 확인
+    if df.empty:
+        cols = ["id", "restaurant_id", "restaurant_name", "host_id", "host_name", 
+                "max_people", "is_anonymous", "created_at", "current_people"]
+        return pd.DataFrame(columns=cols)
+    
+    return df
+
+def get_party_participants(party_id):
+    """참여자 목록을 DataFrame으로 반환합니다."""
+    query = """
+        SELECT u.id, u.name
+        FROM party_participants pp
+        JOIN users u ON pp.user_id = u.id
+        WHERE pp.party_id = %s
+        ORDER BY pp.joined_at ASC
+    """
+    # 파라미터를 튜플로 전달
+    df = fetch_query(query, (party_id,))
+    
+    if df.empty:
+        return pd.DataFrame(columns=["id", "name"])
+    
+    return df
+
+def update_party(party_id, restaurant_id, max_people, is_anonymous):
+    """파티 정보 수정"""
+    query = """
+        UPDATE parties 
+        SET restaurant_id = %s, max_people = %s, is_anonymous = %s
+        WHERE id = %s
+    """
+    params = (restaurant_id, max_people, is_anonymous, party_id)
+    execute_query(query, params)
+
+def delete_party(party_id):
+    """파티 삭제"""
+    query = "DELETE FROM parties WHERE id = %s"
+    execute_query(query, (party_id,))
