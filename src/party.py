@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 import data_handler as dh  # DB 핸들러 임포트
-
+@st.fragment
 def render_party_sidebar(current_user_id: str):
     """
     current_user_id: 로그인한 유저의 DB상 UUID
