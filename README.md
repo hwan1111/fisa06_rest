@@ -196,9 +196,7 @@
 
 ### ERD (Entity Relationship Diagram)
 
-<div align="center">
-  <img src="./ERD.png" alt="ERD 다이어그램" width="80%">
-</div>
+<img src='https://github.com/hwan1111/fisa06_rest/blob/main/ERD.png' width="50%" height="30%">
 
 ### 주요 테이블
 
