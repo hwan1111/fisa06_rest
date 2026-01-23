@@ -12,10 +12,10 @@ import os
 # =========================================================
 # 경로 세팅 (pages/ 안에서 실행되는 것 기준)
 # =========================================================
-PAGES_DIR = os.path.dirname(__file__)                  # .../src/pages
-SRC_DIR = os.path.abspath(os.path.join(PAGES_DIR, ".."))  # .../src
-FONT_DIR = os.path.join(SRC_DIR, "fonts")              # .../src/fonts
-MAL_FONT = os.path.join(FONT_DIR, "malgunbd.ttf") # .../src/fonts/NanumGothic.ttf
+PAGES_DIR = os.path.dirname(__file__)                       # .../src/pages
+SRC_DIR = os.path.abspath(os.path.join(PAGES_DIR, ".."))    # .../src
+FONT_DIR = os.path.join(SRC_DIR, "fonts")                   # .../src/fonts
+MAL_FONT = os.path.join(FONT_DIR, "malgunbd.ttf")           # .../src/fonts/malgunbd.ttf
 
 # recommend.py / data_handler.py import (src 기준)
 sys.path.append(SRC_DIR)
@@ -46,6 +46,19 @@ st.markdown("---")
 
 # ✅ DB 연결
 conn = st.connection("mysql", type="sql")
+
+# =========================================================
+# 유틸: 한글 폰트 경로 찾기 (프로젝트 폰트 우선)
+# =========================================================
+def get_korean_font_path():
+    font_candidates = [
+        MAL_FONT,                         # ✅ 프로젝트에 넣은 폰트 최우선
+        "C:/Windows/Fonts/malgunbd.ttf",  # 윈도우 fallback
+        "C:/Windows/Fonts/malgun.ttf",
+        "/System/Library/Fonts/AppleGothic.ttf",         # mac
+        "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",  # linux
+    ]
+    return next((p for p in font_candidates if p and os.path.exists(p)), None)
 
 # =========================================================
 # 캐시 함수들 (과도한 API/DB 호출 방지)
@@ -345,7 +358,9 @@ with tab1:
             with st.container(border=True):
                 st.subheader("🎛️ 결과 필터 (선택)")
                 all_categories = sorted(df["category"].dropna().unique().tolist())
-                sel_categories = st.multiselect("종류(카테고리) 필터", all_categories, default=all_categories, key="cat_filter_tab1")
+                sel_categories = st.multiselect(
+                    "종류(카테고리) 필터", all_categories, default=all_categories, key="cat_filter_tab1"
+                )
 
             df_f = df[df["category"].isin(sel_categories)] if sel_categories else df
             df_top5 = df_f.sort_values("price", ascending=False).head(5)
@@ -385,7 +400,10 @@ with tab1:
                 xaxis=dict(range=[0, budget * 1.15]),
                 height=420,
             )
-            fig.add_vline(x=budget, line_dash="dash", line_color="red", annotation_text="내 예산", annotation_position="bottom right")
+            fig.add_vline(
+                x=budget, line_dash="dash", line_color="red",
+                annotation_text="내 예산", annotation_position="bottom right"
+            )
             st.plotly_chart(fig, use_container_width=True)
 
             with st.expander(f"📋 전체 검색 결과 보기 ({len(df_f)}개)"):
@@ -401,6 +419,7 @@ with tab1:
                     use_container_width=True,
                     hide_index=True,
                 )
+
 
 # =========================================================
 # 탭 2: 리뷰 정밀 분석 (DB 스키마 반영 + 워드클라우드 한글 폰트 해결)
@@ -419,7 +438,6 @@ with tab2:
     else:
         rest_names = df_rest["name"].dropna().astype(str).tolist()
         selected_rest_name = st.selectbox("분석할 식당을 선택하세요", rest_names, key="rest_select_tab2")
-
         selected_rest_id = df_rest.loc[df_rest["name"] == selected_rest_name, "id"].iloc[0]
 
         with st.expander("🔎 선택 식당 데이터 상태 확인 (Debug)"):
@@ -437,25 +455,16 @@ with tab2:
 
                 if reviews_df.empty:
                     st.session_state.tab2.update(
-                        {
-                            "analyzed": True,
-                            "rest_id": selected_rest_id,
-                            "rest_name": selected_rest_name,
-                            "result": None,
-                            "reviews_text": "",
-                        }
+                        {"analyzed": True, "rest_id": selected_rest_id, "rest_name": selected_rest_name,
+                         "result": None, "reviews_text": ""}
                     )
                 else:
                     valid_comments = reviews_df["comment"].dropna().astype(str).tolist()
                     reviews_text = " ".join(valid_comments)
 
                     st.session_state.tab2.update(
-                        {
-                            "analyzed": True,
-                            "rest_id": selected_rest_id,
-                            "rest_name": selected_rest_name,
-                            "reviews_text": reviews_text,
-                        }
+                        {"analyzed": True, "rest_id": selected_rest_id, "rest_name": selected_rest_name,
+                         "reviews_text": reviews_text}
                     )
 
                     if reviews_text.strip():
@@ -497,30 +506,12 @@ with tab2:
                     fig.update_layout(
                         polar=dict(
                             bgcolor="rgba(255,255,255,0.9)",
-                            radialaxis=dict(
-                                visible=True,
-                                range=[0, 5],
-                                showticklabels=False,
-                                linecolor="lightgray",
-                                gridcolor="whitesmoke",
-                                showline=False,
-                            ),
-                            angularaxis=dict(
-                                showline=False,
-                                showticklabels=True,
-                                tickfont=dict(size=14, family="Malgun Gothic", color="#333"),
-                            ),
+                            radialaxis=dict(visible=True, range=[0, 5], showticklabels=False),
+                            angularaxis=dict(showticklabels=True, tickfont=dict(size=14, family="Malgun Gothic")),
                         ),
                         showlegend=False,
                         margin=dict(l=40, r=40, t=80, b=40),
-                        title=dict(
-                            text="✨ 맛집 5대 매력 지수",
-                            x=0.5,
-                            y=0.95,
-                            xanchor="center",
-                            yanchor="top",
-                            font=dict(size=25, color="#333", family="Malgun Gothic"),
-                        ),
+                        title=dict(text="✨ 맛집 5대 매력 지수", x=0.5, font=dict(size=25, family="Malgun Gothic")),
                     )
                     st.plotly_chart(fig, use_container_width=True)
 
@@ -536,65 +527,55 @@ with tab2:
                     )
 
                 # -----------------------------
-                # 워드클라우드 (✅ 한글 폰트: src/fonts/NanumGothic.ttf 우선)
+                # 워드클라우드 (✅ 프로젝트 폰트 우선)
                 # -----------------------------
                 st.divider()
                 st.subheader("☁️ 손님들이 자주 쓰는 표현")
 
-                if not reviews_text.strip():
-                    st.info("리뷰 텍스트가 비어있습니다.")
+                font_path = get_korean_font_path()
+                if not font_path:
+                    st.error("한글 폰트를 찾지 못했습니다. 아래 경로에 폰트를 추가해주세요:")
+                    st.code(MAL_FONT)
                 else:
-                    font_candidates = [
-                        NANUM_FONT,  # ✅ 프로젝트에 넣은 폰트가 최우선
-                        "C:/Windows/Fonts/malgun.ttf",
-                        "C:/Windows/Fonts/malgunbd.ttf",
-                        "/System/Library/Fonts/AppleGothic.ttf",
-                        "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",
-                    ]
-                    font_path = next((p for p in font_candidates if p and os.path.exists(p)), None)
+                    try:
+                        x, y = np.ogrid[:300, :300]
+                        mask = (x - 150) ** 2 + (y - 150) ** 2 > 130**2
+                        mask = 255 * mask.astype(int)
 
-                    if not font_path:
-                        st.error("한글 폰트를 찾지 못했습니다. src/fonts/NanumGothic.ttf 를 추가해 주세요.")
-                    else:
-                        try:
-                            x, y = np.ogrid[:300, :300]
-                            mask = (x - 150) ** 2 + (y - 150) ** 2 > 130**2
-                            mask = 255 * mask.astype(int)
+                        wc = WordCloud(
+                            font_path=font_path,
+                            background_color="white",
+                            mask=mask,
+                            width=300,
+                            height=300,
+                            max_font_size=80,
+                            prefer_horizontal=0.8,
+                            collocations=False,
+                        ).generate(reviews_text)
 
-                            wc = WordCloud(
-                                font_path=font_path,
-                                background_color="white",
-                                mask=mask,
-                                width=300,
-                                height=300,
-                                max_font_size=80,
-                                prefer_horizontal=0.8,
-                                collocations=False,
-                            ).generate(reviews_text)
+                        top_keywords = sorted(wc.words_.items(), key=lambda t: t[1], reverse=True)[:3]
+                        top_keywords_str = " ".join([f"#{k}" for k, _ in top_keywords])
 
-                            top_keywords = sorted(wc.words_.items(), key=lambda x: x[1], reverse=True)[:3]
-                            top_keywords_str = " ".join([f"#{k[0]}" for k in top_keywords])
+                        st.markdown(
+                            f"""
+                            <div style='text-align: left; margin-bottom: 20px; margin-top: 10px;'>
+                                <span style='font-size: 22px; font-weight: bold; color: #555; margin-right: 8px;'>🔥 핵심 키워드:</span>
+                                <span style='font-size: 30px; font-weight: bold; color: #e03131;'>{top_keywords_str}</span>
+                            </div>
+                            """,
+                            unsafe_allow_html=True,
+                        )
 
-                            st.markdown(
-                                f"""
-                                <div style='text-align: left; margin-bottom: 20px; margin-top: 10px;'>
-                                    <span style='font-size: 22px; font-weight: bold; color: #555; margin-right: 8px;'>🔥 핵심 키워드:</span>
-                                    <span style='font-size: 30px; font-weight: bold; color: #e03131;'>{top_keywords_str}</span>
-                                </div>
-                                """,
-                                unsafe_allow_html=True,
-                            )
+                        c1, c2, c3 = st.columns([1, 2, 1])
+                        with c2:
+                            fig_wc, ax = plt.subplots(figsize=(5, 5))
+                            ax.imshow(wc, interpolation="bilinear")
+                            ax.axis("off")
+                            plt.tight_layout(pad=0)
+                            st.pyplot(fig_wc)
 
-                            c1, c2, c3 = st.columns([1, 2, 1])
-                            with c2:
-                                fig_wc, ax = plt.subplots(figsize=(5, 5))
-                                ax.imshow(wc, interpolation="bilinear")
-                                ax.axis("off")
-                                plt.tight_layout(pad=0)
-                                st.pyplot(fig_wc)
-
-                        except Exception as e:
-                            st.warning(f"워드 클라우드 생성 실패: {e}")
+                    except Exception as e:
+                        st.warning(f"워드 클라우드 생성 실패: {e}")
 
                 # 원본 데이터 확인
                 with st.expander("📋 리뷰 원본 데이터 확인하기"):
@@ -608,3 +589,4 @@ with tab2:
                             st.dataframe(display_df, use_container_width=True, hide_index=True)
                     except Exception as e:
                         st.error(f"데이터 조회 실패: {e}")
+
