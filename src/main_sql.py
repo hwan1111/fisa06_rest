@@ -91,7 +91,11 @@ with tab_map:
         
         m = folium.Map(location=[disp_rest['lat'].mean(), disp_rest['lon'].mean()], zoom_start=15)
         for _, row in disp_rest.iterrows():
-            folium.Marker([row['lat'], row['lon']], tooltip=row['name']).add_to(m)
+            folium.Marker(
+                [row['lat'], row['lon']], 
+                tooltip=row['name'],
+                icon=folium.Icon(color='red') ####################
+            ).add_to(m)
         st_folium(m, width="100%", height=450)
 
         st.markdown("---")
