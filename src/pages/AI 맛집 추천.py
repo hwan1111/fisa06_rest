@@ -15,7 +15,7 @@ import os
 PAGES_DIR = os.path.dirname(__file__)                  # .../src/pages
 SRC_DIR = os.path.abspath(os.path.join(PAGES_DIR, ".."))  # .../src
 FONT_DIR = os.path.join(SRC_DIR, "fonts")              # .../src/fonts
-NANUM_FONT = os.path.join(FONT_DIR, "malgunbd.ttf") # .../src/fonts/NanumGothic.ttf
+MAL_FONT = os.path.join(FONT_DIR, "malgunbd.ttf") # .../src/fonts/NanumGothic.ttf
 
 # recommend.py / data_handler.py import (src 기준)
 sys.path.append(SRC_DIR)
