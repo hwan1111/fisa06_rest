@@ -329,7 +329,7 @@ with tab1:
                     f"""
                 <div style="background-color:#e8f4f8; padding:15px; border-radius:10px;
                             border-left: 5px solid #00a8cc; margin-bottom: 20px;">
-                    <h4 style="color:#007ea7;">🤖 AI's Pick (TOP 5)</h4>
+                    <h4 style="color:#007ea7;">🤖 AI's Pick </h4>
                     <p style="font-size:16px; white-space: pre-wrap;">{st.session_state.tab1["rec_text"]}</p>
                 </div>
                 """,
