@@ -1,6 +1,6 @@
 # 민석 수정
 .streamlit/secrets.toml
 __pychache__/
+*.pyc
 *.csv
-sta/
-.env
+*.json
