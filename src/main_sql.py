@@ -30,6 +30,11 @@ CATEGORIES = ["전체", "한식", "중식", "일식", "양식", "카페/디저�
 # --- 2. 사이드바: 맛집 등록 및 리뷰 ---
 with st.sidebar:
     st.header(f"👋 {st.session_state['user_name']}님, 환영합니다!")
+    # 로그아웃 버튼
+    from login import logout_user
+    if st.button("🚪 로그아웃", use_container_width=True):
+        logout_user()
+    st.markdown("---")
     st.subheader("🏠 맛집 등록 및 리뷰")
 
     with st.form("main_registration", clear_on_submit=True):
