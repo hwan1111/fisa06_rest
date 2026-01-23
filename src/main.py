@@ -11,8 +11,8 @@ from utils import get_star_rating
 # SQL용 컴포넌트와 로그인 페이지를 가져옴
 from login import show_login_page
 
-st.set_page_config(page_title="우리 반 맛집 실록 (SQL)", layout="wide")
-st.title("🍴 우리 반 맛집 미슐랭 가이드 (MySQL)")
+st.set_page_config(page_title="우리 반 맛집 실록", layout="wide")
+st.title("🍴 우리 반 맛집 가이드")
 
 # --- 0. 로그인 처리 ---
 if not show_login_page():

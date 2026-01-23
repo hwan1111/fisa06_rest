@@ -161,35 +161,40 @@ def save_full_visit_data(
 ):
     """
     사용자, 맛집, 메뉴, 리뷰를 한 번에 처리하여 저장합니다.
+    주소를 정제하고, 중복을 확인한 후 데이터를 삽입합니다.
     """
+    # 0. 주소 정제 및 좌표 변환
+    from utils import get_coords
+    cleaned_address, lat, lon = get_coords(rest_address)
+
+    if not lat or not lon:
+        st.error("주소를 좌표로 변환할 수 없습니다. 더 상세한 주소를 입력해 주세요.")
+        return
+    
+    # 정제된 주소가 없으면 원본 주소 사용
+    final_address = cleaned_address if cleaned_address else rest_address
+
     # 1. 사용자 가져오기 또는 생성
     user_id = get_or_create_user(user_name, user_email)
 
-    # 2. 맛집 가져오기 또는 생성
+    # 2. 맛집 가져오기 또는 생성 (정제된 주소 기준)
     rest_df = fetch_query(
         "SELECT id FROM restaurants WHERE name = %s AND address = %s",
-        params=(rest_name, rest_address)
+        params=(rest_name, final_address)
     )
     
     if not rest_df.empty:
         rest_id = rest_df.iloc[0]['id']
     else:
-        # 주소로 좌표 가져오기
-        from utils import get_coords
-        lat, lon = get_coords(rest_address)
-        if not lat:
-            st.error("주소를 좌표로 변환할 수 없습니다.")
-            return
-        
+        # 새로운 맛집이므로 삽입
         rest_id = str(uuid.uuid4())[:8]
         execute_query(
             """
             INSERT INTO restaurants (id, name, category, address, lat, lon, url, added_at)
             VALUES (%s, %s, %s, %s, %s, %s, %s, NOW())
             """,
-            params=(rest_id, rest_name, rest_category, rest_address, lat, lon, rest_url)
+            params=(rest_id, rest_name, rest_category, final_address, lat, lon, rest_url)
         )
-
     # 3. 메뉴 아이템 생성
     menu_item_id = str(uuid.uuid4())[:8]
     execute_query(
