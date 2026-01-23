@@ -6,15 +6,15 @@ import pandas as pd
 import uuid
 
 # 모듈 불러오기
-from data_handler import load_gsheet_data, save_gsheet_data
+import data_handler as dh
 from utils import get_coords, get_star_rating
 from components import add_review, render_comments
 
 st.set_page_config(page_title="우리 반 맛집 실록", layout="wide")
 st.title("🍴 우리 반 맛집 미슐랭 가이드")
 
-rest_df = load_gsheet_data("restaurants")
-rev_df = load_gsheet_data("reviews")
+rest_df = dh.load_gsheet_data("restaurants")
+rev_df = dh.load_gsheet_data("reviews")
 
 CATEGORIES = ["전체", "한식", "중식", "일식", "양식", "카페/디저트", "기타"]
 
@@ -35,7 +35,7 @@ with st.sidebar:
         if submitted:
             if u_name and u_address:
                 # 중복 체크를 위해 최신 데이터 다시 로드
-                current_rest_df = load_gsheet_data("restaurants")
+                current_rest_df = dh.load_gsheet_data("restaurants")
                 existing = current_rest_df[(current_rest_df['name'] == u_name) | (current_rest_df['address'] == u_address)]
                 
                 if not existing.empty:
@@ -52,7 +52,7 @@ with st.sidebar:
                             "address": u_address, "url": u_url, "lat": lat, "lon": lon
                         }
                         updated_rest_df = pd.concat([current_rest_df, pd.DataFrame([new_rest])], ignore_index=True)
-                        save_gsheet_data(updated_rest_df, "restaurants")
+                        dh.save_gsheet_data(updated_rest_df, "restaurants")
                     else:
                         st.error("❌ 주소를 찾을 수 없습니다. 주소를 다시 확인해 주세요.")
                         rest_id = None

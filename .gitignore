@@ -1,3 +1,4 @@
 .streamlit/secrets.toml
 __pychache__/
 *.csv
+*.json
