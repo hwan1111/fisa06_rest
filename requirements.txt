@@ -6,4 +6,4 @@ st-gsheets-connection
 geopy
 plotly
 pymysql
-python-dotenv
+python-dotenv 
