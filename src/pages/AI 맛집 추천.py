@@ -86,14 +86,15 @@ def fetch_restaurants():
     return conn.query("SELECT * FROM restaurants", ttl=60)
 
 @st.cache_data(show_spinner=False, ttl=60)
-def fetch_reviews_by_restaurant(rest_id: int):
+def fetch_reviews_by_restaurant(rest_id: str):
     sql = """
         SELECT r.comment AS content, r.rating
         FROM menu_reviews r
         JOIN menu_items m ON r.menu_item_id = m.id
         WHERE m.restaurant_id = :rest_id
     """
-    return conn.query(sql, params={"rest_id": int(rest_id)}, ttl=60)
+    return conn.query(sql, params={"rest_id": rest_id}, ttl=60)
+
 
 # =========================================================
 # 세션 상태 초기화
