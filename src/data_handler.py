@@ -6,6 +6,7 @@ import pymysql
 from login import execute_query, fetch_query
 import uuid
 from datetime import datetime
+from urllib.parse import urlparse # [수정] 임포트 추가
 
 # Google Sheets 연결 (기존 코드)
 conn_gsheet = st.connection("gsheets", type=GSheetsConnection)
@@ -36,21 +37,19 @@ def save_gsheet_data(df, worksheet_name):
 # =============================================================================
 
 def get_db_connection():
-    """데이터베이스 연결 함수"""
+    """데이터베이스 연결 함수 (pymysql 전용)"""
     try:
         mysql_config = st.secrets["connections"]["mysql"]
         url = mysql_config["url"]
-        url = url.replace("mysql+pymysql://", "")
-        user_pass, host_db = url.split("@")
-        user, password = user_pass.split(":")
-        host_port, database = host_db.split("/")
         
-        if ":" in host_port:
-            host, port = host_port.split(":")
-            port = int(port)
-        else:
-            host = host_port
-            port = 3306
+        # [수정] urllib를 사용하여 안전하게 파싱
+        parsed = urlparse(url)
+        
+        host = parsed.hostname
+        port = parsed.port or 3306
+        user = parsed.username
+        password = parsed.password
+        database = parsed.path.lstrip("/")
         
         conn = pymysql.connect(
             host=host,
