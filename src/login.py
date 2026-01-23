@@ -111,7 +111,7 @@ def show_login_page():
     if "logged_in" in st.session_state and st.session_state.logged_in:
         return True
     # 로그인/회원가입 탭 선택
-    tab1, tab2 = st.tabs([":열쇠와_잠긴_자물쇠: 로그인", ":메모: 회원가입"])
+    tab1, tab2 = st.tabs(["🔐 로그인", "📝 회원가입"])
     with tab1:
         st.markdown("### 로그인")
         st.markdown("---")
