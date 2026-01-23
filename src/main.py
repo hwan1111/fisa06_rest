@@ -10,6 +10,7 @@ import data_handler as dh
 from utils import get_star_rating
 # SQL용 컴포넌트와 로그인 페이지를 가져옴
 from login import show_login_page
+from party import render_party_sidebar
 
 st.set_page_config(page_title="우리 반 맛집 실록", layout="wide")
 st.title("🍴 우리 반 맛집 가이드")
@@ -30,6 +31,8 @@ with st.sidebar:
     from login import logout_user
     if st.button("🚪 로그아웃", use_container_width=True):
         logout_user()
+    st.markdown("---")
+    render_party_sidebar(st.session_state["user_id"])
     st.markdown("---")
     st.subheader("🏠 맛집 등록 및 리뷰")
 

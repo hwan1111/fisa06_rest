@@ -1,25 +1,25 @@
 import streamlit as st
 import re
 import pymysql
+from urllib.parse import urlparse  # [수정] URL 파싱 모듈 추가
+
 def get_db_connection():
-    """데이터베이스 연결 함수"""
+    """데이터베이스 연결 함수 (pymysql 전용)"""
     try:
-        # .streamlit/secrets.toml에서 MySQL 연결 정보 가져오기
+        # secrets.toml에서 정보 가져오기
         mysql_config = st.secrets["connections"]["mysql"]
-        # URL 형식: mysql+pymysql://user:password@host:port/database
         url = mysql_config["url"]
-        # URL 파싱
-        url = url.replace("mysql+pymysql://", "")
-        user_pass, host_db = url.split("@")
-        user, password = user_pass.split(":")
-        host_port, database = host_db.split("/")
-        # 포트가 있는지 확인
-        if ":" in host_port:
-            host, port = host_port.split(":")
-            port = int(port)
-        else:
-            host = host_port
-            port = 3306  # 기본 포트
+        
+        # [수정] urllib를 사용하여 안전하게 파싱
+        parsed = urlparse(url)
+        
+        # 호스트와 포트 분리
+        host = parsed.hostname
+        port = parsed.port or 3306
+        user = parsed.username
+        password = parsed.password
+        database = parsed.path.lstrip("/")  # 앞에 붙은 '/' 제거
+
         conn = pymysql.connect(
             host=host,
             port=port,
@@ -32,6 +32,7 @@ def get_db_connection():
     except Exception as e:
         st.error(f"데이터베이스 연결 실패: {e}")
         return None
+    
 def execute_query(query, params=None):
     """쿼리 실행 함수"""
     conn = get_db_connection()
