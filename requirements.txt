@@ -77,3 +77,5 @@ websockets==16.0
 xyzservices==2025.11.0
 yfinance==1.0
 matplotlib==3.10.8
+wordcloud==1.9.6
+openai
