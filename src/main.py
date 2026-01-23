@@ -10,7 +10,7 @@ import data_handler as dh
 from utils import get_star_rating
 # SQL용 컴포넌트와 로그인 페이지를 가져옴
 from login import show_login_page
-from party import render_party_sidebar
+from components import render_pro_map
 
 st.set_page_config(page_title="우리 반 맛집 실록", layout="wide")
 st.title("🍴 우리 반 맛집 가이드")
@@ -31,8 +31,6 @@ with st.sidebar:
     from login import logout_user
     if st.button("🚪 로그아웃", use_container_width=True):
         logout_user()
-    st.markdown("---")
-    render_party_sidebar(st.session_state["user_id"])
     st.markdown("---")
     st.subheader("🏠 맛집 등록 및 리뷰")
 
@@ -83,11 +81,9 @@ with tab_map:
     unique_restaurants = disp_df.dropna(subset=['restaurant_id']).drop_duplicates(subset=['restaurant_id'])
     
     if not unique_restaurants.empty:
-        # Map rendering
-        m = folium.Map(location=[unique_restaurants['lat'].mean(), unique_restaurants['lon'].mean()], zoom_start=15)
-        for _, row in unique_restaurants.iterrows():
-            folium.Marker([row['lat'], row['lon']], tooltip=row['restaurant_name']).add_to(m)
-        st_folium(m, width="100%", height=450)
+        # Map rendering - NEW
+        pro_map = render_pro_map(disp_df)
+        st_folium(pro_map, width="100%", height=450)
 
         st.markdown("---")
         
