@@ -9,8 +9,16 @@ from geopy.geocoders import Nominatim
 import sys
 import os
 
-# recommend.py 불러오기
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+# =========================================================
+# 경로 세팅 (pages/ 안에서 실행되는 것 기준)
+# =========================================================
+PAGES_DIR = os.path.dirname(__file__)                  # .../src/pages
+SRC_DIR = os.path.abspath(os.path.join(PAGES_DIR, ".."))  # .../src
+FONT_DIR = os.path.join(SRC_DIR, "fonts")              # .../src/fonts
+NANUM_FONT = os.path.join(FONT_DIR, "NanumGothic.ttf") # .../src/fonts/NanumGothic.ttf
+
+# recommend.py / data_handler.py import (src 기준)
+sys.path.append(SRC_DIR)
 import recommend
 import data_handler as dh  # (프로젝트 호환 위해 유지)
 
@@ -63,7 +71,7 @@ def get_weather_cached(lat: float, lon: float):
 
 @st.cache_data(show_spinner=False, ttl=60)
 def fetch_menu_df(budget: int):
-    """예산 이하 메뉴 조회 (파라미터 바인딩)"""
+    """예산 이하 메뉴 조회"""
     sql = """
         SELECT
             r.name AS r_name,
@@ -79,7 +87,6 @@ def fetch_menu_df(budget: int):
     """
     df = conn.query(sql, params={"budget": int(budget)}, ttl=60)
 
-    # price 타입 방어
     if not df.empty and "price" in df.columns:
         df["price"] = pd.to_numeric(df["price"], errors="coerce")
         df = df.dropna(subset=["price"])
@@ -88,38 +95,46 @@ def fetch_menu_df(budget: int):
 
 
 @st.cache_data(show_spinner=False, ttl=60)
-def fetch_restaurants():
-    # ✅ 최소한 id, name은 꼭 가져오기 (선택박스용)
-    return conn.query("SELECT id, name FROM restaurants ORDER BY name", ttl=60)
+def fetch_restaurants_min():
+    """탭2: 식당 선택용 최소 컬럼"""
+    sql = "SELECT id, name FROM restaurants ORDER BY name"
+    return conn.query(sql, ttl=60)
 
 
 @st.cache_data(show_spinner=False, ttl=60)
-def fetch_reviews_by_restaurant(rest_id: str):
-    """
-    ✅ 너희 DB 스키마 기준 JOIN (중요)
-    - menu_reviews.menu_item_id  (varchar)
-    - menu_items.id             (varchar)
-    - menu_items.restaurant_id  (varchar = restaurants.id)
-    """
+def fetch_restaurant_stats(rest_id: str):
+    """선택 식당 메뉴/리뷰 개수(디버깅용)"""
     sql = """
-        SELECT rv.comment AS content, rv.rating
-        FROM menu_reviews rv
-        JOIN menu_items m ON rv.menu_item_id = m.id
-        WHERE m.restaurant_id = :rest_id
+        SELECT
+            (SELECT COUNT(*) FROM menu_items WHERE restaurant_id = :rest_id) AS menu_cnt,
+            (SELECT COUNT(*)
+             FROM menu_reviews mr
+             JOIN menu_items mi ON mr.menu_item_id = mi.id
+             WHERE mi.restaurant_id = :rest_id) AS review_cnt
     """
     return conn.query(sql, params={"rest_id": rest_id}, ttl=60)
 
 
 @st.cache_data(show_spinner=False, ttl=60)
-def fetch_restaurant_stats(rest_id: str):
-    """선택 식당의 메뉴/리뷰 개수(디버깅용)"""
+def fetch_reviews_by_restaurant(rest_id: str):
+    """
+    ✅ DB 스키마 기준 리뷰 조회 (JOIN)
+    menu_reviews -> menu_items -> restaurants
+    """
     sql = """
-        SELECT
-            (SELECT COUNT(*) FROM menu_items WHERE restaurant_id = :rest_id) AS menu_cnt,
-            (SELECT COUNT(*)
-             FROM menu_reviews rv
-             JOIN menu_items m ON rv.menu_item_id = m.id
-             WHERE m.restaurant_id = :rest_id) AS review_cnt
+        SELECT 
+            mr.id AS review_id,
+            u.name AS user_name,
+            mi.item_name,
+            mi.price,
+            mr.rating,
+            mr.comment,
+            mr.timestamp
+        FROM menu_reviews mr
+        JOIN menu_items mi ON mr.menu_item_id = mi.id
+        LEFT JOIN users u ON mr.user_id = u.id
+        WHERE mi.restaurant_id = :rest_id
+        ORDER BY mr.timestamp DESC
     """
     return conn.query(sql, params={"rest_id": rest_id}, ttl=60)
 
@@ -144,6 +159,7 @@ if "tab1" not in st.session_state:
 if "tab2" not in st.session_state:
     st.session_state.tab2 = {
         "analyzed": False,
+        "rest_id": None,
         "rest_name": None,
         "result": None,
         "reviews_text": "",
@@ -160,7 +176,6 @@ with tab1:
 
     col_input, col_weather = st.columns([1, 1], gap="large")
 
-    # 1) 왼쪽: 검색 옵션
     with col_input:
         with st.container(border=True):
             st.subheader("🔍 검색 옵션")
@@ -169,6 +184,7 @@ with tab1:
                 "어디서 드시나요?(상세 주소 입력)",
                 value=st.session_state.tab1["address"] or "상암동",
                 placeholder="예: 서울 시청, 부산 해운대",
+                key="address_input_tab1",
             )
 
             budget = st.number_input(
@@ -177,12 +193,12 @@ with tab1:
                 value=int(st.session_state.tab1["budget"] or 10000),
                 step=1000,
                 format="%d",
+                key="budget_tab1",
             )
             budget = int(budget)
 
             st.markdown("<div style='margin-top: 20px;'></div>", unsafe_allow_html=True)
 
-            # 버튼 스타일링
             st.markdown(
                 """
             <style>
@@ -206,11 +222,9 @@ with tab1:
                 unsafe_allow_html=True,
             )
 
-            search_btn = st.button("AI 맛집 추천 시작 🚀", use_container_width=True, key="search_btn")
+            search_btn = st.button("AI 맛집 추천 시작 🚀", use_container_width=True, key="search_btn_tab1")
 
-    # 2) 버튼 클릭 시 로직 실행 + session_state 저장
     if search_btn:
-        # 기본 좌표(상암동 근처)
         user_lat, user_lon = 37.5786, 126.8972
         location_name = address_input
 
@@ -220,12 +234,10 @@ with tab1:
         else:
             st.toast("📍 위치를 못 찾아서 기본 위치로 검색합니다.", icon="⚠️")
 
-        weather = None
-        weather_summary = ""
-
         with st.spinner("🌞오늘 날씨 확인 중..."):
             weather = get_weather_cached(user_lat, user_lon)
 
+        weather_summary = ""
         if weather:
             main_w = weather.get("main", "")
             temp = weather.get("temp", 0)
@@ -247,11 +259,9 @@ with tab1:
         else:
             weather_summary = "🌥️ 날씨 정보를 가져오지 못했어요. 예산 기반으로 추천할게요."
 
-        # DB 조회
         with st.spinner("📦 예산에 맞는 메뉴를 불러오는 중..."):
             df = fetch_menu_df(budget)
 
-        # ✅ TOP 5 후보만 AI에 전달 (예산 이하에서 가격 높은 순)
         rec_text = None
         if not df.empty:
             top5_df = df.sort_values("price", ascending=False).head(5)
@@ -268,7 +278,6 @@ with tab1:
                     lines = [f"- {c['r_name']} | {c['item_name']} ({int(c['price']):,}원)" for c in candidates]
                     rec_text = "예산 안에서 가격이 높은 메뉴 TOP 5를 골랐어요!\n" + "\n".join(lines)
 
-        # ✅ 상태 저장
         st.session_state.tab1.update(
             {
                 "searched": True,
@@ -284,7 +293,6 @@ with tab1:
             }
         )
 
-    # 3) 오른쪽: 날씨 정보
     with col_weather:
         with st.container(border=True):
             st.subheader("🌤️ 현재 날씨 정보")
@@ -313,7 +321,6 @@ with tab1:
                 st.info("👈 왼쪽에서 시작 버튼을 눌러보세요.")
                 st.caption("검색 결과가 여기에 표시됩니다.")
 
-    # 4) 하단 결과 (✅ TOP 5만 추천/차트/표)
     if st.session_state.tab1["searched"]:
         st.divider()
 
@@ -323,28 +330,24 @@ with tab1:
         if df.empty:
             st.error("😭 해당 예산으로는 먹을 수 있는 메뉴가 없어요...")
         else:
-            # AI 추천 박스
             if st.session_state.tab1["rec_text"]:
                 st.markdown(
                     f"""
                 <div style="background-color:#e8f4f8; padding:15px; border-radius:10px;
                             border-left: 5px solid #00a8cc; margin-bottom: 20px;">
-                    <h4 style="color:#007ea7;">🤖 AI's Pick </h4>
+                    <h4 style="color:#007ea7;">🤖 AI's Pick</h4>
                     <p style="font-size:16px; white-space: pre-wrap;">{st.session_state.tab1["rec_text"]}</p>
                 </div>
                 """,
                     unsafe_allow_html=True,
                 )
 
-            # (선택) 카테고리 필터
             with st.container(border=True):
                 st.subheader("🎛️ 결과 필터 (선택)")
                 all_categories = sorted(df["category"].dropna().unique().tolist())
-                sel_categories = st.multiselect("종류(카테고리) 필터", all_categories, default=all_categories)
+                sel_categories = st.multiselect("종류(카테고리) 필터", all_categories, default=all_categories, key="cat_filter_tab1")
 
             df_f = df[df["category"].isin(sel_categories)] if sel_categories else df
-
-            # ✅ TOP 5
             df_top5 = df_f.sort_values("price", ascending=False).head(5)
 
             st.subheader("🏆 예산 꽉 채운 추천 TOP 5")
@@ -361,7 +364,6 @@ with tab1:
                 hide_index=True,
             )
 
-            # 가격 비교 차트 (TOP 5만)
             st.subheader("📊 추천 TOP 5 가격 비교")
             df_chart = df_top5.sort_values("price", ascending=True)
 
@@ -383,16 +385,9 @@ with tab1:
                 xaxis=dict(range=[0, budget * 1.15]),
                 height=420,
             )
-            fig.add_vline(
-                x=budget,
-                line_dash="dash",
-                line_color="red",
-                annotation_text="내 예산",
-                annotation_position="bottom right",
-            )
+            fig.add_vline(x=budget, line_dash="dash", line_color="red", annotation_text="내 예산", annotation_position="bottom right")
             st.plotly_chart(fig, use_container_width=True)
 
-            # 전체 결과(접기)
             with st.expander(f"📋 전체 검색 결과 보기 ({len(df_f)}개)"):
                 st.dataframe(
                     df_f,
@@ -408,79 +403,11 @@ with tab1:
                 )
 
 # =========================================================
-# 탭 2: 리뷰 정밀 분석 (DB 스키마 반영 수정)
+# 탭 2: 리뷰 정밀 분석 (DB 스키마 반영 + 워드클라우드 한글 폰트 해결)
 # =========================================================
 with tab2:
     st.subheader("🧐 리뷰 심층 분석")
 
-    # -----------------------------
-    # 1. 데이터 조회 함수 (캐싱 적용)
-    # -----------------------------
-    
-    # 식당 목록 가져오기
-    @st.cache_data(show_spinner=False, ttl=60)
-    def fetch_restaurants_min():
-        sql = "SELECT id, name FROM restaurants ORDER BY name"
-        return conn.query(sql, ttl=60)
-
-    # [핵심 수정] 식당별 리뷰 가져오기 (JOIN 쿼리 적용)
-    @st.cache_data(show_spinner=False, ttl=0)
-    def fetch_reviews_by_restaurant(rest_id: str):
-        """
-        ✅ 식당 ID를 기준으로 리뷰 조회
-        경로: menu_reviews -> menu_items -> restaurants
-        """
-        sql = """
-            SELECT 
-                mr.id AS review_id,
-                u.name AS user_name,
-                mi.item_name,
-                mi.price,
-                mr.rating,
-                mr.comment,
-                mr.timestamp
-            FROM menu_reviews mr
-            JOIN menu_items mi ON mr.menu_item_id = mi.id
-            LEFT JOIN users u ON mr.user_id = u.id
-            WHERE mi.restaurant_id = :rest_id
-            ORDER BY mr.timestamp DESC
-        """
-        return conn.query(sql, params={"rest_id": rest_id}, ttl=0)
-
-    # 디버그용: 메뉴 개수 조회
-    @st.cache_data(show_spinner=False, ttl=60)
-    def fetch_menu_cnt(rest_id: str):
-        sql = "SELECT COUNT(*) AS menu_cnt FROM menu_items WHERE restaurant_id = :rest_id"
-        return conn.query(sql, params={"rest_id": rest_id}, ttl=0)
-
-    # 디버그용: 리뷰 개수 조회 (JOIN 필요)
-    @st.cache_data(show_spinner=False, ttl=60)
-    def fetch_review_cnt(rest_id: str):
-        sql = """
-            SELECT COUNT(*) AS review_cnt 
-            FROM menu_reviews mr
-            JOIN menu_items mi ON mr.menu_item_id = mi.id
-            WHERE mi.restaurant_id = :rest_id
-        """
-        return conn.query(sql, params={"rest_id": rest_id}, ttl=0)
-
-    # -----------------------------
-    # 2. 세션 상태 초기화
-    # -----------------------------
-    if "tab2" not in st.session_state:
-        st.session_state.tab2 = {
-            "analyzed": False,
-            "rest_id": None,
-            "rest_name": None,
-            "result": None,
-            "reviews_text": "",
-        }
-
-    # -----------------------------
-    # 3. UI 구성
-    # -----------------------------
-    
-    # (1) 식당 선택
     try:
         df_rest = fetch_restaurants_min()
     except Exception as e:
@@ -492,51 +419,47 @@ with tab2:
     else:
         rest_names = df_rest["name"].dropna().astype(str).tolist()
         selected_rest_name = st.selectbox("분석할 식당을 선택하세요", rest_names, key="rest_select_tab2")
-        
-        # 선택된 이름으로 ID 찾기
+
         selected_rest_id = df_rest.loc[df_rest["name"] == selected_rest_name, "id"].iloc[0]
 
-        # (옵션) 데이터 상태 디버그 패널
         with st.expander("🔎 선택 식당 데이터 상태 확인 (Debug)"):
             try:
-                m_cnt = fetch_menu_cnt(selected_rest_id).iloc[0]["menu_cnt"]
-                r_cnt = fetch_review_cnt(selected_rest_id).iloc[0]["review_cnt"]
-                st.write(f"- 등록된 메뉴 수: {m_cnt}개")
-                st.write(f"- 등록된 리뷰 수: {r_cnt}개")
+                s = fetch_restaurant_stats(selected_rest_id).iloc[0]
+                st.write({"menu_cnt": int(s["menu_cnt"]), "review_cnt": int(s["review_cnt"])})
             except Exception as e:
                 st.write(f"디버그 정보 로드 실패: {e}")
 
-        review_btn = st.button("리뷰 분석 시작 ✨", key="review_btn")
+        review_btn = st.button("리뷰 분석 시작 ✨", key="review_btn_tab2")
 
-        # (2) 분석 실행 로직
         if review_btn:
             try:
                 reviews_df = fetch_reviews_by_restaurant(selected_rest_id)
 
                 if reviews_df.empty:
-                    st.session_state.tab2.update({
-                        "analyzed": True,
-                        "rest_id": selected_rest_id,
-                        "rest_name": selected_rest_name,
-                        "result": None,
-                        "reviews_text": "",
-                    })
+                    st.session_state.tab2.update(
+                        {
+                            "analyzed": True,
+                            "rest_id": selected_rest_id,
+                            "rest_name": selected_rest_name,
+                            "result": None,
+                            "reviews_text": "",
+                        }
+                    )
                 else:
-                    # 텍스트 합치기 (None 값 제외)
                     valid_comments = reviews_df["comment"].dropna().astype(str).tolist()
                     reviews_text = " ".join(valid_comments)
 
-                    # 상태 업데이트
-                    st.session_state.tab2.update({
-                        "analyzed": True,
-                        "rest_id": selected_rest_id,
-                        "rest_name": selected_rest_name,
-                        "reviews_text": reviews_text,
-                    })
+                    st.session_state.tab2.update(
+                        {
+                            "analyzed": True,
+                            "rest_id": selected_rest_id,
+                            "rest_name": selected_rest_name,
+                            "reviews_text": reviews_text,
+                        }
+                    )
 
                     if reviews_text.strip():
                         with st.spinner("💭 AI가 손님들의 마음을 읽고 있어요..."):
-                            # recommend 모듈의 함수 호출
                             result = recommend.get_review_analysis(selected_rest_name, reviews_text)
                         st.session_state.tab2["result"] = result
                     else:
@@ -545,12 +468,8 @@ with tab2:
             except Exception as e:
                 st.error(f"리뷰 분석 중 오류 발생: {e}")
 
-        # (3) 결과 시각화
-        # 현재 선택된 식당과 분석된 식당이 같을 때만 결과 표시
-        if (
-            st.session_state.tab2.get("analyzed")
-            and st.session_state.tab2.get("rest_id") == selected_rest_id
-        ):
+        # 결과 표시 (선택된 식당 == 분석된 식당일 때만)
+        if st.session_state.tab2.get("analyzed") and st.session_state.tab2.get("rest_id") == selected_rest_id:
             reviews_text = st.session_state.tab2.get("reviews_text", "")
             result = st.session_state.tab2.get("result")
 
@@ -559,23 +478,22 @@ with tab2:
             elif result is None:
                 st.warning("분석 결과 생성에 실패했습니다.")
             else:
-                # 레이아웃: 차트(좌) / 요약(우)
                 col_chart, col_summary = st.columns([1.2, 0.8])
 
                 with col_chart:
                     categories = ["맛", "가성비", "서비스", "위생", "분위기"]
-                    
                     fig = go.Figure()
-                    fig.add_trace(go.Scatterpolar(
-                        r=result["scores"],
-                        theta=categories,
-                        fill="toself",
-                        name=selected_rest_name,
-                        fillcolor="rgba(255, 127, 80, 0.35)",
-                        line=dict(color="#FF7F50", width=2),
-                        marker=dict(size=6, color="#FF4500")
-                    ))
-
+                    fig.add_trace(
+                        go.Scatterpolar(
+                            r=result["scores"],
+                            theta=categories,
+                            fill="toself",
+                            name=selected_rest_name,
+                            fillcolor="rgba(255, 127, 80, 0.35)",
+                            line=dict(color="#FF7F50", width=2),
+                            marker=dict(size=6, color="#FF4500"),
+                        )
+                    )
                     fig.update_layout(
                         polar=dict(
                             bgcolor="rgba(255,255,255,0.9)",
@@ -585,93 +503,108 @@ with tab2:
                                 showticklabels=False,
                                 linecolor="lightgray",
                                 gridcolor="whitesmoke",
-                                showline=False
+                                showline=False,
                             ),
                             angularaxis=dict(
                                 showline=False,
                                 showticklabels=True,
-                                tickfont=dict(size=14, family="Malgun Gothic", color="#333")
-                            )
+                                tickfont=dict(size=14, family="Malgun Gothic", color="#333"),
+                            ),
                         ),
                         showlegend=False,
                         margin=dict(l=40, r=40, t=80, b=40),
                         title=dict(
                             text="✨ 맛집 5대 매력 지수",
-                            x=0.5, y=0.95,
-                            xanchor="center", yanchor="top",
-                            font=dict(size=25, color="#333", family="Malgun Gothic")
-                        )
+                            x=0.5,
+                            y=0.95,
+                            xanchor="center",
+                            yanchor="top",
+                            font=dict(size=25, color="#333", family="Malgun Gothic"),
+                        ),
                     )
                     st.plotly_chart(fig, use_container_width=True)
 
                 with col_summary:
-                    st.markdown(f"""
+                    st.markdown(
+                        f"""
                     <div style="background-color:#fff0f6; padding:20px; border-radius:15px; margin-top: 30px; border: 1px solid #ffdeeb;">
                         <h3 style="color:#d63384; margin-bottom:10px;">📝 AI 한줄평</h3>
                         <p style="font-size:16px; line-height:1.6; color:#555;">"{result['summary']}"</p>
                     </div>
-                    """, unsafe_allow_html=True)
+                    """,
+                        unsafe_allow_html=True,
+                    )
 
+                # -----------------------------
+                # 워드클라우드 (✅ 한글 폰트: src/fonts/NanumGothic.ttf 우선)
+                # -----------------------------
                 st.divider()
                 st.subheader("☁️ 손님들이 자주 쓰는 표현")
 
-                # 폰트 설정 (환경에 맞게 자동 선택)
-                font_candidates = [
-                    "C:/Windows/Fonts/malgun.ttf",
-                    "/System/Library/Fonts/AppleGothic.ttf",
-                    "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",
-                ]
-                font_path = next((p for p in font_candidates if os.path.exists(p)), None)
+                if not reviews_text.strip():
+                    st.info("리뷰 텍스트가 비어있습니다.")
+                else:
+                    font_candidates = [
+                        NANUM_FONT,  # ✅ 프로젝트에 넣은 폰트가 최우선
+                        "C:/Windows/Fonts/malgun.ttf",
+                        "C:/Windows/Fonts/malgunbd.ttf",
+                        "/System/Library/Fonts/AppleGothic.ttf",
+                        "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",
+                    ]
+                    font_path = next((p for p in font_candidates if p and os.path.exists(p)), None)
 
-                try:
-                    # 원형 마스크 생성
-                    x, y = np.ogrid[:300, :300]
-                    mask = (x - 150) ** 2 + (y - 150) ** 2 > 130 ** 2
-                    mask = 255 * mask.astype(int)
-
-                    wc = WordCloud(
-                        font_path=font_path,
-                        background_color="white",
-                        mask=mask,
-                        colormap="plasma",
-                        width=300, height=300,
-                        max_font_size=80,
-                        repeat=True,
-                        prefer_horizontal=0.8
-                    ).generate(reviews_text)
-
-                    # 상위 키워드 추출
-                    top_keywords = sorted(wc.words_.items(), key=lambda x: x[1], reverse=True)[:3]
-                    top_keywords_str = " ".join([f"#{k[0]}" for k in top_keywords])
-
-                    st.markdown(f"""
-                        <div style='text-align: left; margin-bottom: 20px; margin-top: 10px;'>
-                            <span style='font-size: 22px; font-weight: bold; color: #555; margin-right: 8px;'>🔥 핵심 키워드:</span>
-                            <span style='font-size: 30px; font-weight: bold; color: #e03131;'>{top_keywords_str}</span>
-                        </div>
-                    """, unsafe_allow_html=True)
-
-                    c1, c2, c3 = st.columns([1, 2, 1])
-                    with c2:
-                        fig_wc, ax = plt.subplots(figsize=(5, 5))
-                        ax.imshow(wc, interpolation="bilinear")
-                        ax.axis("off")
-                        plt.tight_layout(pad=0)
-                        st.pyplot(fig_wc)
-
-                except Exception as e:
-                    st.warning(f"워드 클라우드 생성 실패: {e}")
-
-            # (옵션) 리뷰 데이터 확인용 표
-            with st.expander("📋 리뷰 원본 데이터 확인하기"):
-                try:
-                    raw_df = fetch_reviews_by_restaurant(selected_rest_id)
-                    if raw_df.empty:
-                        st.info("데이터가 없습니다.")
+                    if not font_path:
+                        st.error("한글 폰트를 찾지 못했습니다. src/fonts/NanumGothic.ttf 를 추가해 주세요.")
                     else:
-                        # 보여줄 컬럼 선택 및 정리
-                        display_df = raw_df[['user_name', 'item_name', 'rating', 'comment', 'timestamp']].copy()
-                        display_df.columns = ['작성자', '주문메뉴', '별점', '내용', '일시']
-                        st.dataframe(display_df, use_container_width=True, hide_index=True)
-                except Exception as e:
-                    st.error(f"데이터 조회 실패: {e}")
+                        try:
+                            x, y = np.ogrid[:300, :300]
+                            mask = (x - 150) ** 2 + (y - 150) ** 2 > 130**2
+                            mask = 255 * mask.astype(int)
+
+                            wc = WordCloud(
+                                font_path=font_path,
+                                background_color="white",
+                                mask=mask,
+                                width=300,
+                                height=300,
+                                max_font_size=80,
+                                prefer_horizontal=0.8,
+                                collocations=False,
+                            ).generate(reviews_text)
+
+                            top_keywords = sorted(wc.words_.items(), key=lambda x: x[1], reverse=True)[:3]
+                            top_keywords_str = " ".join([f"#{k[0]}" for k in top_keywords])
+
+                            st.markdown(
+                                f"""
+                                <div style='text-align: left; margin-bottom: 20px; margin-top: 10px;'>
+                                    <span style='font-size: 22px; font-weight: bold; color: #555; margin-right: 8px;'>🔥 핵심 키워드:</span>
+                                    <span style='font-size: 30px; font-weight: bold; color: #e03131;'>{top_keywords_str}</span>
+                                </div>
+                                """,
+                                unsafe_allow_html=True,
+                            )
+
+                            c1, c2, c3 = st.columns([1, 2, 1])
+                            with c2:
+                                fig_wc, ax = plt.subplots(figsize=(5, 5))
+                                ax.imshow(wc, interpolation="bilinear")
+                                ax.axis("off")
+                                plt.tight_layout(pad=0)
+                                st.pyplot(fig_wc)
+
+                        except Exception as e:
+                            st.warning(f"워드 클라우드 생성 실패: {e}")
+
+                # 원본 데이터 확인
+                with st.expander("📋 리뷰 원본 데이터 확인하기"):
+                    try:
+                        raw_df = fetch_reviews_by_restaurant(selected_rest_id)
+                        if raw_df.empty:
+                            st.info("데이터가 없습니다.")
+                        else:
+                            display_df = raw_df[["user_name", "item_name", "rating", "comment", "timestamp"]].copy()
+                            display_df.columns = ["작성자", "주문메뉴", "별점", "내용", "일시"]
+                            st.dataframe(display_df, use_container_width=True, hide_index=True)
+                    except Exception as e:
+                        st.error(f"데이터 조회 실패: {e}")
