@@ -126,16 +126,7 @@
 
 ### ERD (Entity Relationship Diagram)
 
-```mermaid
-erDiagram
-    RESTAURANTS ||--o{ MENU_ITEMS : "판매하는 메뉴"
-    RESTAURANTS ||--o{ PARTIES : "모임 장소"
-    USERS ||--o{ MENU_REVIEWS : "메뉴 리뷰 작성"
-    USERS ||--o{ PARTIES : "파티 방장"
-    USERS ||--o{ PARTY_PARTICIPANTS : "파티 참여"
-    MENU_ITEMS ||--o{ MENU_REVIEWS : "메뉴별 평가"
-    PARTIES ||--o{ PARTY_PARTICIPANTS : "파티 구성원"
-```
+<img src='https://github.com/hwan1111/fisa06_rest/blob/main/ERD.png' width="50%" height="30%">
 
 ### 주요 테이블
 
