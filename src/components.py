@@ -63,46 +63,27 @@ def render_comments_gsheet(rest_id, rev_df, parent_id="root", depth=0):
 # SQL Components
 # =============================================================================
 
-def render_comments_sql(restaurant_id, reviews_df, parent_id=None, depth=0):
-    """Renders comments from a SQL DataFrame."""
-    # Normalize parent_id for comparison
-    parent_id_mask = reviews_df['parent_id'].isnull() if parent_id is None else (reviews_df['parent_id'] == parent_id)
-    
-    # Filter for comments that are direct children of the current parent_id
-    sub_comments = reviews_df[parent_id_mask]
+def render_comments_sql(restaurant_id, reviews_df):
+    """
+    Renders menu reviews from a SQL DataFrame. 
+    Displays menu item name, price, rating, and comment.
+    """
+    if reviews_df.empty:
+        st.info("아직 작성된 메뉴 리뷰가 없습니다.")
+        return
 
-    for _, r in sub_comments.iterrows():
-        margin_left = depth * 25
-        # Note the column name differences: user_name, created_at, content
+    for _, r in reviews_df.iterrows():
         st.markdown(f"""
-        <div style="margin-left: {margin_left}px; border-left: 3px solid #ddd; padding-left: 15px; margin-bottom: 10px; background-color: #f9f9f9; padding: 12px; border-radius: 8px;">
-            <small><b>@{r['user_name']}</b> · {r['created_at'].strftime('%Y-%m-%d %H:%M')}</small><br>
-            <span style="color: #f39c12;">{get_star_rating(r['rating'])}</span><br>
-            <div style="margin-top:5px;">{r['content']}</div>
+        <div style="border-left: 3px solid #ddd; padding-left: 15px; margin-bottom: 10px; background-color: #f9f9f9; padding: 12px; border-radius: 8px;">
+            <p>
+                <strong>{r['item_name']}</strong> - 
+                <span style="color: #555;">{r['price']:,}원</span>
+            </p>
+            <small><b>@{r['user_name']}</b> · {r['timestamp'].strftime('%Y-%m-%d %H:%M')}</small><br>
+            <span style="color: #f39c12;">{get_star_rating(r['rating'])}</span> ({r['rating']})<br>
+            <div style="margin-top:5px;">{r['comment']}</div>
         </div>
         """, unsafe_allow_html=True)
-        
-        # Reply form for SQL version
-        with st.expander(f"↳ 답글 쓰기", expanded=False):
-            with st.form(key=f"reply_form_sql_{r['id']}"):
-                re_comment = st.text_area("내용", key=f"comm_sql_{r['id']}")
-                if st.form_submit_button("답글 등록"):
-                    if re_comment:
-                        # Use the logged-in user's ID from session state
-                        user_id = st.session_state.get("user_id")
-                        if user_id:
-                            # Call the SQL add_review from data_handler
-                            dh.add_review(restaurant_id, user_id, 0, re_comment, parent_id=r['id'])
-                            st.success("답글이 등록되었습니다.")
-                            time.sleep(0.5)
-                            st.rerun()
-                        else:
-                            st.warning("답글을 등록하려면 먼저 로그인해야 합니다.")
-                    else:
-                        st.warning("내용을 입력해 주세요.")
-        
-        # Recursively render replies, passing the correct restaurant_id and full df
-        render_comments_sql(restaurant_id, reviews_df, parent_id=r['id'], depth=depth + 1)
 
 # Renaming original functions to be specific
 add_review = add_review_gsheet
