@@ -1,7 +1,8 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 import data_handler as dh  # DB 핸들러 임포트
+
 @st.fragment
 def render_party_sidebar(current_user_id: str):
     """
@@ -15,14 +16,15 @@ def render_party_sidebar(current_user_id: str):
     if "show_party_list" not in st.session_state:
         st.session_state.show_party_list = False
     
-    # 수정 모드 관리를 위한 세션 변수
     if "editing_party_id" not in st.session_state:
         st.session_state.editing_party_id = None
 
-    st.sidebar.title("🎉 맛집 원정대")
+    # [수정] st.sidebar.title -> st.title (이미 사이드바 안에 있음)
+    st.title("🎉 맛집 원정대")
 
     # --- 1. 메인 메뉴 토글 ---
-    if st.sidebar.button("🍖맛집 원정대 메뉴"):
+    # [수정] st.sidebar.button -> st.button
+    if st.button("🍖맛집 원정대 메뉴"):
         st.session_state.show_party_options = not st.session_state.show_party_options
         if not st.session_state.show_party_options:
             st.session_state.party_form_open = False
@@ -30,7 +32,8 @@ def render_party_sidebar(current_user_id: str):
             st.session_state.editing_party_id = None
 
     if st.session_state.show_party_options:
-        col1, col2 = st.sidebar.columns(2)
+        # [수정] st.sidebar.columns -> st.columns
+        col1, col2 = st.columns(2)
         with col1:
             if st.button("➕원정대 등록"):
                 st.session_state.party_form_open = not st.session_state.party_form_open
@@ -44,7 +47,7 @@ def render_party_sidebar(current_user_id: str):
                     st.session_state.party_form_open = False
                     st.session_state.editing_party_id = None
 
-        st.sidebar.markdown("---")
+        st.markdown("---")
 
     # --- 공통 데이터: 맛집 리스트 ---
     restaurants_df = dh.get_all_restaurants()
@@ -58,12 +61,12 @@ def render_party_sidebar(current_user_id: str):
 
     # --- 2. 원정대 등록 폼 ---
     if st.session_state.get("party_form_open"):
-        st.sidebar.subheader("새 원정대 만들기")
+        st.subheader("새 원정대 만들기")
         
         if restaurants_df.empty:
-            st.sidebar.warning("등록된 맛집이 없습니다.")
+            st.warning("등록된 맛집이 없습니다.")
         else:
-            with st.sidebar.form("party_registration_form"):
+            with st.form("party_registration_form"):
                 selected_label = st.selectbox("가게 선택", list(rest_map.keys()))
                 max_people = st.number_input("모집 인원", 2, 10, 4)
                 is_anonymous = st.checkbox("익명 파티 (참여자 이름 숨김)")
@@ -78,32 +81,28 @@ def render_party_sidebar(current_user_id: str):
 
     # --- 3. 원정대 목록 및 상세/수정 ---
     if st.session_state.get("show_party_list"):
-        st.sidebar.subheader("🔥 오늘의 원정대")
+        st.subheader("🔥 오늘의 원정대")
         parties_df = dh.get_active_parties()
         
         if not parties_df.empty:
-            # 리스트박스용 라벨 생성
             parties_df['display'] = parties_df.apply(
                 lambda x: f"[{x['restaurant_name']}] ({x['current_people']}/{x['max_people']})", axis=1
             )
             party_map = dict(zip(parties_df['display'], parties_df['id']))
             
-            # 파티 선택
-            selected_display = st.sidebar.selectbox("참여할 원정대 선택", list(party_map.keys()))
+            selected_display = st.selectbox("참여할 원정대 선택", list(party_map.keys()))
             selected_party_id = party_map[selected_display]
             
-            # 선택된 파티 정보 로드
             row = parties_df[parties_df['id'] == selected_party_id].iloc[0]
             
-            st.sidebar.markdown("---")
+            st.markdown("---")
 
-            # === [A] 수정 모드인지 확인 ===
+            # === [A] 수정 모드 ===
             is_editing = (st.session_state.editing_party_id == selected_party_id)
 
             if is_editing:
-                # --- 수정 폼 ---
-                st.sidebar.markdown("### ✏️ 원정대 정보 수정")
-                with st.sidebar.form(key=f"edit_form_{selected_party_id}"):
+                st.markdown("### ✏️ 원정대 정보 수정")
+                with st.form(key=f"edit_form_{selected_party_id}"):
                     default_rest_label = id_to_name_map.get(row['restaurant_id'])
                     try:
                         default_index = list(rest_map.keys()).index(default_rest_label)
@@ -128,15 +127,15 @@ def render_party_sidebar(current_user_id: str):
                             st.rerun()
 
             else:
-                # --- [B] 일반 상세 보기 모드 ---
-                st.sidebar.markdown(f"### 🍽 {row['restaurant_name']}")
+                # --- [B] 상세 보기 모드 ---
+                st.markdown(f"### 🍽 {row['restaurant_name']}")
                 
-                # === [추가된 로직] 12:30 자동 공개 ===
-                now = datetime.now()
-                reveal_time = now.replace(hour=12, minute=30, second=0, microsecond=0)
-                is_past_reveal_time = now >= reveal_time
+                # UTC -> KST 시간 변환
+                now_utc = datetime.now(timezone.utc)
+                now_kst = now_utc + timedelta(hours=9)
+                reveal_time = now_kst.replace(hour=12, minute=30, second=0, microsecond=0)
+                is_past_reveal_time = now_kst >= reveal_time
 
-                # 방장 이름 표시
                 if row['is_anonymous'] and not is_past_reveal_time:
                     host_display = "익명 방장"
                 else:
@@ -145,40 +144,33 @@ def render_party_sidebar(current_user_id: str):
                 if row['host_id'] == current_user_id:
                     host_display += " (나)"
                 
-                st.sidebar.write(f"👑 **방장:** {host_display}")
+                st.write(f"👑 **방장:** {host_display}")
                 
-                # 익명 파티 공개 상태 안내
                 if row['is_anonymous']:
                     if is_past_reveal_time:
-                        st.sidebar.caption("🔓 12:30이 지나 명단이 공개되었습니다.")
+                        st.caption("🔓 12:30이 지나 명단이 공개되었습니다.")
                     else:
-                        st.sidebar.caption("🔒 12:30에 명단이 공개됩니다.")
+                        st.caption("🔒 12:30에 명단이 공개됩니다.")
 
-                st.sidebar.write(f"👥 **인원:** {row['current_people']} / {row['max_people']}명")
-                st.sidebar.caption(f"개설: {pd.to_datetime(row['created_at']).strftime('%H:%M')}")
+                st.write(f"👥 **인원:** {row['current_people']} / {row['max_people']}명")
+                st.caption(f"개설: {pd.to_datetime(row['created_at']).strftime('%H:%M')}")
 
-                # 참여자 목록 표시
                 participants_df = dh.get_party_participants(selected_party_id)
                 participant_ids = participants_df['id'].tolist()
                 
                 display_names = []
                 for idx, p_row in participants_df.iterrows():
-                    # '나'는 항상 실명으로 표시
                     if p_row['id'] == current_user_id:
                         display_names.append(f"{p_row['name']}(나)")
-                    # 익명 파티이고 아직 12:30 전이면 -> 익명 처리
                     elif row['is_anonymous'] and not is_past_reveal_time:
                         display_names.append(f"익명{idx+1}")
-                    # 그 외(실명 파티거나 시간이 지났으면) -> 실명 공개
                     else:
                         display_names.append(p_row['name'])
                 
-                st.sidebar.info("참여자: " + ", ".join(display_names))
+                st.info("참여자: " + ", ".join(display_names))
 
-                # === 버튼 액션 영역 ===
-                col1, col2 = st.sidebar.columns(2)
+                col1, col2 = st.columns(2)
                 
-                # 1) 방장인 경우 -> 수정 / 삭제 버튼
                 if row['host_id'] == current_user_id:
                     with col1:
                         if st.button("🔧 수정", key=f"edit_btn_{selected_party_id}"):
@@ -189,8 +181,6 @@ def render_party_sidebar(current_user_id: str):
                             dh.delete_party(selected_party_id)
                             st.warning("원정대가 삭제되었습니다.")
                             st.rerun()
-                
-                # 2) 방장이 아닌 경우 -> 참여 / 나가기 버튼
                 else:
                     is_joined = current_user_id in participant_ids
                     is_full = row['current_people'] >= row['max_people']
@@ -215,6 +205,5 @@ def render_party_sidebar(current_user_id: str):
                             if st.button("🏃 나가기", key=f"leave_{selected_party_id}"):
                                 dh.leave_party(selected_party_id, current_user_id)
                                 st.rerun()
-
         else:
-            st.sidebar.info("오늘 모집 중인 원정대가 없습니다.")
+            st.info("오늘 모집 중인 원정대가 없습니다.")
