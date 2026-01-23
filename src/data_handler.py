@@ -286,24 +286,26 @@ def join_party(party_id, user_id):
         WHERE p.id = %s
         GROUP BY p.id
     """
-    rows = fetch_query(check_query, (party_id,))
+    # fetch_query 결과는 DataFrame입니다.
+    df = fetch_query(check_query, (party_id,))
     
-    if not rows:
+    # DataFrame이 비어있는지 확인하려면 .empty를 사용해야 합니다.
+    if df.empty:
         return False, "존재하지 않는 파티입니다."
     
-    # fetch_query 결과는 ((max, curr), ) 형태의 튜플의 튜플입니다.
-    # 인덱스로 접근해야 합니다.
-    max_p = rows[0][0]
-    curr_p = rows[0][1]
+    # 값 접근 방식 변경: DataFrame의 첫 번째 행(.iloc[0])에서 컬럼명으로 접근
+    max_p = df.iloc[0]['max_people']
+    curr_p = df.iloc[0]['current_people']
     
     if curr_p >= max_p:
         return False, "앗! 그 사이에 자리가 꽉 찼습니다. 😭"
     
     # 2. 중복 참여 체크
     check_user_query = "SELECT * FROM party_participants WHERE party_id=%s AND user_id=%s"
-    check_user = fetch_query(check_user_query, (party_id, user_id))
+    check_user_df = fetch_query(check_user_query, (party_id, user_id))
     
-    if check_user:
+    # DataFrame이 비어있지 않다면(데이터가 있다면) 이미 참여한 것
+    if not check_user_df.empty:
         return False, "이미 참여 중인 파티입니다."
 
     # 3. 입장 처리
