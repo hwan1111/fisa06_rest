@@ -9,9 +9,15 @@ import uuid
 import data_handler as dh
 from utils import get_coords, get_star_rating
 from components import add_review, render_comments
+from login import show_login_page
 
 st.set_page_config(page_title="우리 반 맛집 실록", layout="wide")
 st.title("🍴 우리 반 맛집 미슐랭 가이드")
+
+# --- 로그인 처리 ---
+# 로그인이 되어있지 않으면 로그인 페이지를 보여주고, 앱의 나머지 부분은 실행하지 않음
+if not show_login_page():
+    st.stop()
 
 rest_df = dh.load_gsheet_data("restaurants")
 rev_df = dh.load_gsheet_data("reviews")
@@ -20,7 +26,13 @@ CATEGORIES = ["전체", "한식", "중식", "일식", "양식", "카페/디저�
 
 # 사이드바 등록 폼
 with st.sidebar:
-    st.header("🏠 맛집 등록 및 리뷰")
+    st.header(f"👋 {st.session_state.get('user_name', '사용자')}님, 환영합니다!")
+    # 로그아웃 버튼
+    from login import logout_user
+    if st.button("🚪 로그아웃", use_container_width=True):
+        logout_user()
+    st.markdown("---")
+    st.subheader("🏠 맛집 등록 및 리뷰")
     with st.form("main_registration", clear_on_submit=True):
         u_name = st.text_input("가게 이름")
         u_address = st.text_input("상세 주소")
@@ -28,7 +40,8 @@ with st.sidebar:
         u_rating = st.slider("별점", 1, 5, 3)
         u_comment = st.text_area("방문 후기")
         u_url = st.text_input("네이버 지도 링크")
-        u_user = st.text_input("작성자 성함", value="익명")
+        # 로그인된 사용자 이름을 기본값으로 사용
+        u_user = st.text_input("작성자 성함", value=st.session_state.get('user_name', '익명'))
         
         submitted = st.form_submit_button("등록 완료")
         
