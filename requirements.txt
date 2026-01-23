@@ -2,6 +2,8 @@ streamlit
 pandas
 folium
 streamlit-folium
-st-gsheets-connection
 geopy
 plotly
+sqlalchemy
+mysqlclient
+pymysql

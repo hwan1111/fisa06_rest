@@ -1,3 +1,4 @@
+# 민석 수정
 import uuid
 from geopy.geocoders import Nominatim
 
