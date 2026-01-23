@@ -7,3 +7,6 @@ plotly
 sqlalchemy
 mysqlclient
 pymysql
+wordcloud
+matplotlib
+openai
