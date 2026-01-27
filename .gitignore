@@ -1,7 +1,8 @@
-# 민석 수정
 .streamlit/secrets.toml
 __pychache__/
 *.pyc
 *.csv
 *.json
 ERD.md
+ERD.png
+.env
