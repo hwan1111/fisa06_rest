@@ -6,3 +6,7 @@ __pychache__/
 ERD.md
 ERD.png
 .env
+Dockerfile
+Docker-Compose.yml
+.Dockerignore
+.부산물

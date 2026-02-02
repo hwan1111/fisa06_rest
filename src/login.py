@@ -1,24 +1,29 @@
 import streamlit as st
 import re
 import pymysql
-from urllib.parse import urlparse  # [수정] URL 파싱 모듈 추가
+import os
+from urllib.parse import urlparse
 
 def get_db_connection():
-    """데이터베이스 연결 함수 (pymysql 전용)"""
+    """데이터베이스 연결 함수 (환경 변수 우선)"""
     try:
-        # secrets.toml에서 정보 가져오기
-        mysql_config = st.secrets["connections"]["mysql"]
-        url = mysql_config["url"]
+        # 1. 환경 변수 우선 확인 (Docker/Cloud)
+        url = os.getenv("MYSQL_URL")
         
-        # [수정] urllib를 사용하여 안전하게 파싱
+        # 2. st.secrets 확인 (Local)
+        if not url:
+            if "MYSQL_URL" in st.secrets:
+                url = st.secrets["MYSQL_URL"]
+        
+        if not url:
+            return None
+        
         parsed = urlparse(url)
-        
-        # 호스트와 포트 분리
         host = parsed.hostname
         port = parsed.port or 3306
         user = parsed.username
         password = parsed.password
-        database = parsed.path.lstrip("/")  # 앞에 붙은 '/' 제거
+        database = parsed.path.lstrip("/")
 
         conn = pymysql.connect(
             host=host,
@@ -26,13 +31,14 @@ def get_db_connection():
             user=user,
             password=password,
             database=database,
-            charset='utf8mb4'
+            charset='utf8mb4',
+            cursorclass=pymysql.cursors.DictCursor
         )
         return conn
     except Exception as e:
-        st.error(f"데이터베이스 연결 실패: {e}")
+        print(f"DB Connection Error: {e}")
         return None
-    
+
 def execute_query(query, params=None):
     """쿼리 실행 함수"""
     conn = get_db_connection()
@@ -47,38 +53,42 @@ def execute_query(query, params=None):
         return True
     except Exception as e:
         st.error(f"쿼리 실행 실패: {e}")
-        conn.close()
+        if conn:
+            conn.close()
         return False
+
 def fetch_query(query, params=None):
-    """쿼리 결과 반환 함수"""
+    """쿼리 결과 반환 함수 (List of Dicts)"""
     conn = get_db_connection()
     if conn is None:
-        return None
+        return []
     try:
         cursor = conn.cursor()
         cursor.execute(query, params)
         result = cursor.fetchall()
         cursor.close()
         conn.close()
-        return result
+        return result if result else []
     except Exception as e:
         st.error(f"쿼리 실행 실패: {e}")
-        conn.close()
-        return None
+        if conn:
+            conn.close()
+        return []
+
 def is_valid_email(email):
     """이메일 형식을 정규 표현식으로 검사"""
     email_regex = r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$"
     return re.match(email_regex, email) is not None
+
 def register_user(user_id, email, name):
     """회원가입 처리"""
-    # 중복 체크
     check_query = "SELECT id FROM users WHERE id = %s OR email = %s;"
     check_params = (user_id, email)
     existing = fetch_query(check_query, check_params)
     if existing:
         st.error("이미 존재하는 아이디 또는 이메일입니다.")
         return False
-    # 회원가입 쿼리
+    
     query = """
     INSERT INTO users (id, email, name, joined_at)
     VALUES (%s, %s, %s, NOW());
@@ -89,14 +99,17 @@ def register_user(user_id, email, name):
         return True
     else:
         return False
+
 def login_user(user_id, email):
     """로그인 처리. 성공 시 True, 실패 시 False 반환."""
     query = "SELECT name FROM users WHERE id = %s AND email = %s;"
     params = (user_id, email)
     result = fetch_query(query, params)
+    
     if result:
-        stored_name = result[0][0]
-        # 로그인 세션 관리
+        # DictCursor를 사용하므로 키로 접근
+        stored_name = result[0]['name']
+        
         st.session_state.user_id = user_id
         st.session_state.email = email
         st.session_state.logged_in = True
@@ -106,13 +119,14 @@ def login_user(user_id, email):
     else:
         st.error("존재하지 않는 사용자이거나 이메일이 잘못되었습니다.")
         return False
+
 def show_login_page():
     """로그인 페이지를 표시하고, 로그인 성공 시 True를 반환"""
-    # 이미 로그인되어 있으면 True 반환
     if "logged_in" in st.session_state and st.session_state.logged_in:
         return True
-    # 로그인/회원가입 탭 선택
+    
     tab1, tab2 = st.tabs(["🔐 로그인", "📝 회원가입"])
+    
     with tab1:
         st.markdown("### 로그인")
         st.markdown("---")
@@ -131,6 +145,7 @@ def show_login_page():
                     success = login_user(user_id, email)
                     if success:
                         st.rerun()
+                        
     with tab2:
         st.markdown("### 회원가입")
         st.markdown("---")
@@ -153,9 +168,9 @@ def show_login_page():
                     if success:
                         st.info("로그인 탭에서 로그인해주세요.")
     return False
+
 def logout_user():
     """로그아웃 처리"""
-    # 세션 상태 초기화
     if "logged_in" in st.session_state:
         del st.session_state.logged_in
     if "user_id" in st.session_state:
